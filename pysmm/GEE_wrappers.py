@@ -905,6 +905,7 @@ class GEE_extent(object):
 				print('Export completed')
 	def check_layer(self, string): 
 		print ('Layer ID: ', string)
+		return string 
 	def mapping (self, image, vis_params, name):
 		#Add EE drawing method to folium.
 		def add_ee_layer(self, ee_image_object, vis_params, name):
