@@ -348,7 +348,7 @@ class GEE_extent(object):
 			self.GEE_2_asset(raster=mean_gvv_v, name=mean_asset_path, timeout=False)
 			mean_gvv_v = ee.Image(self.asset_ID + mean_asset_path)
 		
-		pickle.dump('s1_mean', self.asset_ID + mean_asset_path)
+		pickle.dump(self.asset_ID + mean_asset_path, open('../s1_mean', 'wb'))
 
 		# export
 		# self.S1_SIG0_VV_db = s1_sig0_vv
@@ -744,7 +744,7 @@ class GEE_extent(object):
 			self.GEE_2_asset(raster=gee_l8_mean, name=mean_asset_path, timeout=False)
 			gee_l8_mean = ee.Image(self.asset_ID + mean_asset_path)
 			
-		pickle.dump('l8_mean', self.asset_ID + mean_asset_path)
+		pickle.dump(self.asset_ID + mean_asset_path, open('../l8_mean', 'wb'))
 # 		vis_params = {'min': 200, 'max': 4000}
 # 		name = 'Landsat-8'
 # 		self.mapping(gee_l8_mean, vis_params, name)
@@ -819,7 +819,7 @@ class GEE_extent(object):
 			self.GEE_2_asset(raster=evi_mean, name=mean_asset_path, timeout=False)
 			evi_mean = ee.Image(self.asset_ID + mean_asset_path)
 		
-		pickle.dump('evi_mean', self.asset_ID + mean_asset_path)
+		pickle.dump(self.asset_ID + mean_asset_path, open('../evi_mean', 'wb'))
 # 		vis_params = {'min': -650, 'max': 5000}
 # 		name = 'EVI_MODIS_Mean'
 # 		self.mapping(evi_mean, vis_params, name)
