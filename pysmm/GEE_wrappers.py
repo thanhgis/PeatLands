@@ -1,5 +1,6 @@
 from __future__ import print_function
 import ee
+import folium
 import numpy as np
 import datetime as dt
 import math
@@ -7,25 +8,21 @@ import time
 import os
 
 class GEE_extent(object):
-	"""Class to create an interface with GEE for the extraction of arrays
-
-		Attributes:
-			minlon: minimum longitude in decimal degrees
-			minlat: minumum latitude in decimal degress
-			maxlon: maximum longitude in decimal degrees
-			maxlat: maximum latitude in decimal degrees
-			workdir: path to directory for exported files
-			sampling: sampling of exported grids
-		"""
-
 	def __init__(self, minlon, minlat, maxlon, maxlat, workdir, sampling=20):
 		"""Return a new GEE extent object"""
 		ee.Reset()
 		ee.Initialize()
-
 		# construct roi
 		roi = ee.Geometry.Polygon([[minlon, minlat], [minlon, maxlat], [maxlon, maxlat], [maxlon, minlat], [minlon, minlat]])
-
+		# ThanhGIS added:
+		centroid =roi.centroid().coordinates()
+		pointinfo = centroid.getInfo() 
+		self.centerlat = pointinfo[0]
+		self.centerlon = pointinfo[1]
+		self.asset_ID = ee.data.getAssetRoots()[0]['id'].replace('projects/earthengine-legacy/assets/', '') + '/'
+		print ('Selected AOI centroid and user Asset: ', self.centerlon, self.centerlat)
+		print ('Selected User asset Id: ', self.asset_ID)
+		# -------------
 		self.roi = roi
 		self.MINLON = minlon
 		self.MINLAT = minlat
@@ -108,7 +105,6 @@ class GEE_extent(object):
 
 	def _multitemporalDespeckle(self, images, radius, units, opt_timeWindow=None):
 		"""Function for multi-temporal despeckling"""
-
 		def mapMeanSpace(i):
 			reducer = ee.Reducer.mean()
 			kernel = ee.Kernel.square(radius, units)
@@ -140,25 +136,7 @@ class GEE_extent(object):
 		return meanSpace.map(multitemporalDespeckleSingle)
 
 	def _slope_correction(self, collection, elevation, model, buffer=0):
-		"""This function applies the slope correction on a collection of Sentinel-1 data
-
-		   :param collection: ee.Collection of Sentinel-1
-		   :param elevation: ee.Image of DEM
-		   :param model: model to be applied (volume/surface)
-		   :param buffer: buffer in meters for layover/shadow amsk
-
-			:returns: ee.Image
-		"""
-
 		def _volumetric_model_SCF(theta_iRad, alpha_rRad):
-			'''Code for calculation of volumetric model SCF
-
-			:param theta_iRad: ee.Image of incidence angle in radians
-			:param alpha_rRad: ee.Image of slope steepness in range
-
-			:returns: ee.Image
-			'''
-			# create a 90 degree image in radians
 			ninetyRad = ee.Image.constant(90).multiply(np.pi / 180)
 			# model
 			nominator = (ninetyRad.subtract(theta_iRad).add(alpha_rRad)).tan()
@@ -166,12 +144,6 @@ class GEE_extent(object):
 			return nominator.divide(denominator)
 
 		def _surface_model_SCF(theta_iRad, alpha_rRad, alpha_azRad):
-			'''Code for calculation of direct model SCF
-			:param theta_iRad: ee.Image of incidence angle in radians
-			:param alpha_rRad: ee.Image of slope steepness in range
-			:param alpha_azRad: ee.Image of slope steepness in azimuth
-			:returns: ee.Image
-			'''
 			# create a 90 degree image in radians
 			ninetyRad = ee.Image.constant(90).multiply(np.pi / 180)
 			# model
@@ -180,23 +152,10 @@ class GEE_extent(object):
 			return nominator.divide(denominator)
 
 		def _erode(image, distance):
-			'''Buffer function for raster
-			:param image: ee.Image that shoudl be buffered
-			:param distance: distance of buffer in meters
-			:returns: ee.Image
-			'''
 			d = (image.Not().unmask(1).fastDistanceTransform(30).sqrt().multiply(ee.Image.pixelArea().sqrt()))
 			return image.updateMask(d.gt(distance))
 
 		def _masking(alpha_rRad, theta_iRad, buffer):
-			'''Masking of layover and shadow
-			:param alpha_rRad: ee.Image of slope steepness in range
-			:param theta_iRad: ee.Image of incidence angle in radians
-			:param buffer: buffer in meters
-
-			:returns: ee.Image
-			'''
-			# layover, where slope > radar viewing angle
 			layover = alpha_rRad.lt(theta_iRad).rename('layover')
 			# shadow
 			ninetyRad = ee.Image.constant(90).multiply(np.pi / 180)
@@ -213,18 +172,12 @@ class GEE_extent(object):
 			return layover.addBands(shadow).addBands(no_data_mask)
 
 		def _correct(image):
-			'''This function applies the slope correction and adds layover and shadow masks
-
-			'''
-
 			# get the image geometry and projection
 			geom = image.geometry()
 			proj = image.select(1).projection()
 
 			# calculate the look direction
-			heading = (ee.Terrain.aspect(image.select('angle'))
-					   .reduceRegion(ee.Reducer.mean(), geom, 1000, tileScale=4)
-					   .get('aspect'))
+			heading = (ee.Terrain.aspect(image.select('angle')).reduceRegion(ee.Reducer.mean(), geom, 1000, tileScale=4).get('aspect'))
 
 			# Sigma0 to Power of input image
 			sigma0Pow = ee.Image.constant(10).pow(image.divide(10.0))
@@ -379,23 +332,43 @@ class GEE_extent(object):
 
 		# check if median was alread computed
 		tmpcoords = self.roi.getInfo()['coordinates']
+		
 		mean_asset_path = 's1med_' + str(abs(tmpcoords[0][0][0])) + \
 						  '_' + str(abs(tmpcoords[0][0][1])) + '_' + \
 						  str(abs(tmpcoords[0][2][0])) + \
 						  '_' + str(abs(tmpcoords[0][2][1])) + \
 						  '_' + str(self.sampling) + '_' + str(self.TRACK_NR) + '_' + str(doi.year)
 		mean_asset_path = mean_asset_path.replace('.', '')
-		mean_gvv_v = ee.Image('users/thanhgeevn/' + mean_asset_path)
+		# ThanhGIS: To show the image in Colab, commented out the below lines
+		mean_gvv_v = ee.Image(self.asset_ID + mean_asset_path)
 		try:
 			mean_gvv_v.getInfo()
-			print('S1 median exists')
+			print('S1 median exists: ', mean_gvv_v.get('system:id').getInfo())
 		except:
 			# compute median
 			mean_gvv_v = ee.Image(gee_s1_lin.select('VV_gamma0vol').reduce(ee.Reducer.median(), parallelScale=16))
-
 			# export asset
 			self.GEE_2_asset(raster=mean_gvv_v, name=mean_asset_path, timeout=False)
-			mean_gvv_v = ee.Image('users/thanhgeevn/' + mean_asset_path)
+			mean_gvv_v = ee.Image(self.asset_ID + mean_asset_path)
+
+		#Add EE drawing method to folium.
+		def GEE_2_Colab(self, ee_image_object, vis_params, name):
+			map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
+			folium.raster_layers.TileLayer(
+				tiles = map_id_dict['tile_fetcher'].url_format,
+				attr = 'Map Data &copy; <a href="https://earthengine.google.com/">Google Earth Engine</a>',
+				name = name,
+				overlay = True,
+				control = True).add_to(self)
+		vis_params = {'palette': 'red'}
+		folium.Map.add_ee_layer = GEE_2_Colab
+		my_map = folium.Map(location=[self.centerlon, self.centerlat], zoom_start=10)
+		my_map.add_ee_layer(mean_gvv_v, vis_params, 'S1_OUTPUT')
+		# Add a layer control panel to the map.
+		my_map.add_child(folium.LayerControl())
+
+		# Display the map.
+		display(my_map)
 
 		# export
 		# self.S1_SIG0_VV_db = s1_sig0_vv
@@ -404,7 +377,7 @@ class GEE_extent(object):
 
 	def estimate_SM_GBR_1step(self):
 		# load GBR models
-		from pysmm.no_GLDAS_decisiontree_GEE__1step import tree as GBR_tree
+		from no_GLDAS_decisiontree_GEE__1step import tree as GBR_tree
 		import sys
 
 		g0_v_vv = self.S1_G0VOL_VV_db
@@ -562,11 +535,10 @@ class GEE_extent(object):
 
 		# select pixels with the smalles time gap to doi and mosaic spatially
 		doi = dt.datetime(year=year, month=month, day=day, hour=hour, minute=minute)
-		print (doi)
+		print ("Selected date", doi)
 		s1_selected = ee.Image(gee_s1_filtered.map(getddist).sort('dateDist').first())
 		
 		self.S1_DATE = dt.datetime.strptime(s1_selected.date().format('yyyy-MM-dd HH:mm:ss').getInfo(), '%Y-%m-%d %H:%M:%S')
-		print ('Loi o day: ', self.S1_DATE)
 
 		# get the track number
 		#s1_sig0_info = s1_selected.getInfo()
@@ -584,9 +556,7 @@ class GEE_extent(object):
 
 		# list of models
 		model = 'volume'
-		gee_s1_fltd_vol = self._slope_correction(gee_s1_filtered,
-												 ee.Image(dem),
-												 model)
+		gee_s1_fltd_vol = self._slope_correction(gee_s1_filtered, ee.Image(dem), model)
 
 		gee_s1_filtered = gee_s1_fltd_vol
 
@@ -713,14 +683,10 @@ class GEE_extent(object):
 		def date_mosaic(image):
 
 			def addDate(image2):
-				date_img = ee.Image(image2.date().difference(imdate, 'second')).abs().float().rename(
-					['Ddate']).multiply(-1)
+				date_img = ee.Image(image2.date().difference(imdate, 'second')).abs().float().rename(['Ddate']).multiply(-1)
 				return image2.addBands(date_img)
-
 			imdate = image.date()
-
-			gee_l8_date = gee_l8_collection_all.filterDate(imdate.advance(-40, 'day'),
-														   imdate.advance(40, 'day'))
+			gee_l8_date = gee_l8_collection_all.filterDate(imdate.advance(-40, 'day'), imdate.advance(40, 'day'))
 			gee_l8_date = gee_l8_date.map(addDate)
 			gee_l8_date = gee_l8_date.qualityMosaic('Ddate').float()
 
@@ -730,13 +696,11 @@ class GEE_extent(object):
 		# self.L8_STACK = gee_l8_collection_all
 
 	def match_evi(self):
-
 		def mask(image):
 			# mask image
 			immask = image.select('SummaryQA').eq(ee.Image(0))
 			evimask = image.select('EVI').lte(5000)
 			image = image.updateMask(immask).updateMask(evimask)
-
 			return image.clip(self.roi)
 
 		# load collection
@@ -747,50 +711,32 @@ class GEE_extent(object):
 				date_img = ee.Image(image2.date().difference(imdate, 'second')).abs().float().rename(
 					['Ddate']).multiply(-1)
 				return image2.addBands(date_img)
-
 			imdate = image.date()
-
-			gee_evi_date = evi_collection.filterDate(imdate.advance(-40, 'day'),
-													 imdate.advance(40, 'day'))
+			gee_evi_date = evi_collection.filterDate(imdate.advance(-40, 'day'), imdate.advance(40, 'day'))
 			gee_evi_date = gee_evi_date.map(addDate)
 			gee_evi_date = gee_evi_date.qualityMosaic('Ddate').float()
-
 			return gee_evi_date.set('system:time_start', imdate.millis())
-
 		self.EVI_STACK = self.S1_reference_stack.map(date_mosaic)
 
 	def match_gldas(self):
-
 		def mask(image):
 			return image.clip(self.roi)
-
 		# load collection
-		gl_collection = ee.ImageCollection("NASA/GLDAS/V021/NOAH/G025/T3H") \
-			.select(['SoilTMP0_10cm_inst', 'SWE_inst']) \
-			.filterDate('2014-01-01', dt.datetime.today().strftime('%Y-%m-%d')).map(mask)
+		gl_collection = ee.ImageCollection("NASA/GLDAS/V021/NOAH/G025/T3H").select(['SoilTMP0_10cm_inst', 'SWE_inst']).filterDate('2014-01-01', dt.datetime.today().strftime('%Y-%m-%d')).map(mask)
 
 		def date_map(image):
-
 			imdate = image.date()
-
 			# filter
 			def getddist(image2):
-				return image2.set(
-					'dateDist', ee.Number(image2.get('system:time_start')).subtract(
-						imdate.millis()).abs()
-				)
-
+				return image2.set('dateDist', ee.Number(image2.get('system:time_start')).subtract(imdate.millis()).abs())
 			# select the image with the smalles time gap
-			gl_collection_date = gl_collection.filterDate(imdate.advance(-5, 'day'),
-														  imdate.advance(5, 'day'))
+			gl_collection_date = gl_collection.filterDate(imdate.advance(-5, 'day'), imdate.advance(5, 'day'))
 			gee_gl_date = ee.Image(gl_collection_date.map(getddist).sort('dateDist').first())
-
 			return gee_gl_date.set('system:time_start', imdate.millis())
 
 		self.GLDAS_STACK = self.S1_reference_stack.map(date_map)
 
 	def get_l8(self, date=None):
-		
 		def mask(image):
 			# clouds
 			def getQABits(image, start, end, newName):
@@ -819,18 +765,10 @@ class GEE_extent(object):
 				return snow_mask.And(fs_mask)
 			image = image.updateMask(cloud_shadows(image))
 			image = image.updateMask(clouds(image))
-			# image = image.updateMask(frzn(image))
-
-			# # radiometric saturation
-			# image = image.updateMask(image.select('radsat_qa').eq(2))
 			return image.clip(self.roi)
-
 		gee_l8_collection_all = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
-
 		# apply landsat mask
 		gee_l8_collection = gee_l8_collection_all.map(mask).select(['B4', 'B5', 'B11'])
-
-
 		if date is None:
 			doi = self.S1_DATE
 		else:
@@ -844,19 +782,37 @@ class GEE_extent(object):
 						  '_' + str(abs(tmpcoords[0][2][1])) + \
 						  '_' + str(self.sampling) + '_' + str(doi.year)
 		mean_asset_path = mean_asset_path.replace('.', '')
-		gee_l8_mean = ee.Image('users/thanhgeevn/' + mean_asset_path)
+		gee_l8_mean = ee.Image(self.asset_ID + mean_asset_path)
 
+		#ThanhGIS: To avoid the possibility in Colab, commented out the below lines 
 		try:
 			gee_l8_mean.getInfo()
-			print('L8 median exists')
+			print('L8 median exists: ', gee_l8_mean.get('system:id').getInfo())
 		except:
-			# compute median
-			gee_l8_mean = gee_l8_collection.filterDate(str(doi.year) + '-01-01', str(doi.year) + '-12-31') \
-				.reduce(ee.Reducer.median(), parallelScale=16)
+		# compute median
+			gee_l8_mean = gee_l8_collection.filterDate(str(doi.year) + '-01-01', str(doi.year) + '-12-31').reduce(ee.Reducer.median(), parallelScale=16)
 
 			#export asset
 			self.GEE_2_asset(raster=gee_l8_mean, name=mean_asset_path, timeout=False)
-			gee_l8_mean = ee.Image(mean_asset_path)
+			gee_l8_mean = ee.Image(self.asset_ID + mean_asset_path)
+
+		#Add EE drawing method to folium.
+		def GEE_2_Colab(self, ee_image_object, vis_params, name):
+			map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
+			folium.raster_layers.TileLayer(
+				tiles = map_id_dict['tile_fetcher'].url_format,
+				attr = 'Map Data &copy; <a href="https://earthengine.google.com/">Google Earth Engine</a>',
+				name = name,
+				overlay = True,
+				control = True).add_to(self)
+		vis_params = {'min': 200,'max': 4000}
+		folium.Map.add_ee_layer = GEE_2_Colab
+		my_map = folium.Map(location=[self.centerlon, self.centerlat], zoom_start=10)
+		my_map.add_ee_layer(gee_l8_mean, vis_params, 'L8_Mean')
+		# Add a layer control panel to the map.
+		my_map.add_child(folium.LayerControl())
+		# Display the map.
+		display(my_map)
 
 		def addDate(image2):
 			date_img = ee.Image(image2.date().difference(doi.strftime('%Y-%m-%dT%H:%M:%S'), 'second')).abs().float().rename(
@@ -864,8 +820,7 @@ class GEE_extent(object):
 			return image2.addBands(date_img)
 
 		# create mosaic for the doi
-		gee_l8_date = gee_l8_collection_all.filterDate((doi - dt.timedelta(days=40)).strftime('%Y-%m-%d'),
-													   (doi + dt.timedelta(days=40)).strftime('%Y-%m-%d'))
+		gee_l8_date = gee_l8_collection_all.filterDate((doi - dt.timedelta(days=40)).strftime('%Y-%m-%d'), (doi + dt.timedelta(days=40)).strftime('%Y-%m-%d'))
 		gee_l8_date = gee_l8_date.map(addDate)
 		gee_l8_date = gee_l8_date.qualityMosaic('Ddate').float()
 
@@ -918,18 +873,38 @@ class GEE_extent(object):
 						  '_' + str(abs(tmpcoords[0][2][1])) + \
 						  '_' + str(self.sampling) + '_' + str(doi.year)
 		mean_asset_path = mean_asset_path.replace('.', '')
-		evi_mean = ee.Image('users/thanhgeevn/' + mean_asset_path)
+
+		#ThanhGIS: To avoid the possibility in Colab, commented out the below lines:
+
+		evi_mean = ee.Image(self.asset_ID + mean_asset_path)
 		try:
 			evi_mean.getInfo()
-			print('EVI median exists')
+			print('EVI median exists: ', evi_mean.get('system:id').getInfo())
 		except:
 			# compute avg
-			evi_mean = evi_collection.filterDate(str(doi.year) + '-01-01', str(doi.year) + '-12-31') \
-				.reduce(ee.Reducer.median(), parallelScale=16)
+			evi_mean = evi_collection.filterDate(str(doi.year) + '-01-01', str(doi.year) + '-12-31').reduce(ee.Reducer.median(), parallelScale=16)
 
 			# export asset
 			self.GEE_2_asset(raster=evi_mean, name=mean_asset_path, timeout=False)
-			evi_mean = ee.Image('users/thanhgeevn/' + mean_asset_path)
+			evi_mean = ee.Image(self.asset_ID + mean_asset_path)
+		#Add EE drawing method to folium.
+		def GEE_2_Colab(self, ee_image_object, vis_params, name):
+			map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
+			folium.raster_layers.TileLayer(
+				tiles = map_id_dict['tile_fetcher'].url_format,
+				attr = 'Map Data &copy; <a href="https://earthengine.google.com/">Google Earth Engine</a>',
+				name = name,
+				overlay = True,
+				control = True).add_to(self)
+		vis_params = {'min': -650,'max': 4000}
+		folium.Map.add_ee_layer = GEE_2_Colab
+		my_map = folium.Map(location=[self.centerlon, self.centerlat], zoom_start=10)
+		my_map.add_ee_layer(evi_mean, vis_params, 'EVI_MODIS_Mean')
+		# Add a layer control panel to the map.
+		my_map.add_child(folium.LayerControl())
+		# Display the map.
+		display(my_map)
+
 
 		# fiter
 		# filter
@@ -979,6 +954,7 @@ class GEE_extent(object):
 		self.WATERP_COVER = copernicus_image.select('water-permanent-coverfraction').resample()
 		self.WATERS_COVER = copernicus_image.select('water-seasonal-coverfraction').resample()
 
+
 	def GEE_2_asset(self, outdir=None, raster='ESTIMATED_SM', name='SM', timeout=True):
 		# Export GEE rasters as asset - specify raster as string
 
@@ -991,17 +967,17 @@ class GEE_extent(object):
 			outdir = self.workdir
 
 		try:
-			file_avail = ee.Image('users/thanhgeevn/' + outdir + '/' + name)
+			file_avail = ee.Image(self.asset_ID + outdir + '/' + name)
 			file_avail.getInfo()
 			if self.OVERWRITE:
-				os.system('earthengine rm users/thanhgeevn/' + outdir + '/' + name)
+				os.system('earthengine rm '+ self.asset_ID + outdir + '/' + name)
 				raise NameError(name + ' will be overwritten')
 			else:
 				print(name + 'already exists')
 				return
 		except:
 			file_exp = ee.batch.Export.image.toAsset(image=geds, description='fileexp' + name,
-													 assetId='users/thanhgeevn/'+ name,
+													 assetId=self.asset_ID+ name,
 													 region=self.roi.getInfo()['coordinates'],
 													 scale=self.sampling,
 													 maxPixels=1000000000000)
