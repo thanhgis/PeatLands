@@ -336,7 +336,7 @@ class GEE_extent(object):
 						  '_' + str(abs(tmpcoords[0][2][1])) + \
 						  '_' + str(self.sampling) + '_' + str(self.TRACK_NR) + '_' + str(doi.year)
 		mean_asset_path = mean_asset_path.replace('.', '')
-		# ThanhGIS: To show the image in Colab, commented out the below lines
+
 		mean_gvv_v = ee.Image(self.asset_ID + mean_asset_path)
 		try:
 			mean_gvv_v.getInfo()
@@ -348,7 +348,7 @@ class GEE_extent(object):
 			self.GEE_2_asset(raster=mean_gvv_v, name=mean_asset_path, timeout=False)
 			mean_gvv_v = ee.Image(self.asset_ID + mean_asset_path)
 		
-		self.s1_mean = self.asset_ID + mean_asset_path
+		self.check_layer(self.asset_ID + mean_asset_path)
 
 		# export
 		# self.S1_SIG0_VV_db = s1_sig0_vv
@@ -410,9 +410,7 @@ class GEE_extent(object):
 		## scaling
 		estimated_smc = estimated_smc.multiply(10).round().int8()
 
-		self.ESTIMATED_SM = estimated_smc.rename(['ESTIMATED_SM']).set({'system:time_start':
-																	   ee.Date(self.S1_DATE.strftime('%Y-%m-%dT%H:%M:%S')).millis(),
-																	   's1tracknr': int(self.TRACK_NR)})
+		self.ESTIMATED_SM = estimated_smc.rename(['ESTIMATED_SM']).set({'system:time_start': ee.Date(self.S1_DATE.strftime('%Y-%m-%dT%H:%M:%S')).millis(), 's1tracknr': int(self.TRACK_NR)})
 		self.ESTIMATED_MEAN_SM = None
 
 	def get_S1_dates(self, tracknr=None, dualpol=True, ascending=True, start='2014-01-01', stop='2021-01-01'):
@@ -420,10 +418,7 @@ class GEE_extent(object):
 		gee_s1_collection = ee.ImageCollection('COPERNICUS/S1_GRD')
 
 		# ASCENDING acquisitions
-		gee_s1_filtered = gee_s1_collection.filter(ee.Filter.eq('instrumentMode', 'IW')) \
-			.filterBounds(self.roi) \
-			.filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV')) \
-			.filterDate(start, opt_end=stop)
+		gee_s1_filtered = gee_s1_collection.filter(ee.Filter.eq('instrumentMode', 'IW')).filterBounds(self.roi).filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV')).filterDate(start, opt_end=stop)
 
 		if ascending == True:
 			# Consider only image from ascending orbits
@@ -476,20 +471,14 @@ class GEE_extent(object):
 				.bitwiseOr(copernicus_image.eq(valLClist[7])) \
 				.bitwiseOr(copernicus_image.eq(valLClist[8])) \
 				.bitwiseOr(copernicus_image.eq(valLClist[9]))
-			maskimg = ee.Image.cat([lcmask,
-									lcmask,
-									image.select('angle').mask()])
-
-			#tmp = ee.Image(image)
-			#tmp = tmp.updateMask(lcmask)
+			maskimg = ee.Image.cat([lcmask,	lcmask,	image.select('angle').mask()])
 
 			return image.updateMask(maskimg)
 
 		gee_s1_collection = ee.ImageCollection('COPERNICUS/S1_GRD')
 
 		# Filter the image collection
-		gee_s1_filtered = gee_s1_collection.filter(ee.Filter.eq('instrumentMode', 'IW')) \
-			.filterBounds(self.roi).filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV')) \
+		gee_s1_filtered = gee_s1_collection.filter(ee.Filter.eq('instrumentMode', 'IW')).filterBounds(self.roi).filter(ee.Filter.listContains('transmitterReceiverPolarisation', 'VV'))
 
 		if ascending:
 			# Consider only image from ascending orbits
@@ -629,32 +618,17 @@ class GEE_extent(object):
 			# frozen soil / snow
 			def frzn(image):
 				doi = ee.Date(image.get('system:time_start'))
-				snow = ee.ImageCollection("NASA/GLDAS/V021/NOAH/G025/T3H") \
-					.select('SWE_inst') \
-					.filterDate(doi, doi.advance(3, 'hour'))
-
+				snow = ee.ImageCollection("NASA/GLDAS/V021/NOAH/G025/T3H").select('SWE_inst').filterDate(doi, doi.advance(3, 'hour'))
 				snow_img = ee.Image(snow.first()).resample().clip(self.roi)
-
 				snow_mask = snow_img.expression('(b(0) < 3) ? 1 : 0')
-
-				fs = ee.ImageCollection("NASA/GLDAS/V021/NOAH/G025/T3H") \
-					.select('SoilTMP0_10cm_inst') \
-					.filterDate(doi, doi.advance(3, 'hour'))
-
+				fs = ee.ImageCollection("NASA/GLDAS/V021/NOAH/G025/T3H").select('SoilTMP0_10cm_inst').filterDate(doi, doi.advance(3, 'hour'))
 				fs_img = ee.Image(fs.first()).resample().clip(self.roi)
-
 				fs_mask = fs_img.expression('(b(0) > 275) ? 1 : 0')
-
 				return snow_mask.And(fs_mask)
 
 			image = image.updateMask(cloud_shadows(image))
 			image = image.updateMask(clouds(image))
-			# image = image.updateMask(frzn(image))
-
-			# # radiometric saturation
-			# image = image.updateMask(image.select('radsat_qa').eq(2))
 			return image.clip(self.roi)
-
 		gee_l8_collection_all = ee.ImageCollection('LANDSAT/LC08/C01/T1_SR')
 
 		# apply landsat mask
@@ -669,11 +643,8 @@ class GEE_extent(object):
 			gee_l8_date = gee_l8_collection_all.filterDate(imdate.advance(-40, 'day'), imdate.advance(40, 'day'))
 			gee_l8_date = gee_l8_date.map(addDate)
 			gee_l8_date = gee_l8_date.qualityMosaic('Ddate').float()
-
 			return gee_l8_date.set('system:time_start', imdate.millis())
-
 		self.L8_STACK = self.S1_reference_stack.map(date_mosaic)
-		# self.L8_STACK = gee_l8_collection_all
 
 	def match_evi(self):
 		def mask(image):
@@ -763,20 +734,17 @@ class GEE_extent(object):
 						  '_' + str(self.sampling) + '_' + str(doi.year)
 		mean_asset_path = mean_asset_path.replace('.', '')
 		gee_l8_mean = ee.Image(self.asset_ID + mean_asset_path)
-
-		#ThanhGIS: To avoid the possibility in Colab, commented out the below lines 
 		try:
 			gee_l8_mean.getInfo()
 			print('L8 median exists: ', gee_l8_mean.get('system:id').getInfo())
 		except:
 		# compute median
 			gee_l8_mean = gee_l8_collection.filterDate(str(doi.year) + '-01-01', str(doi.year) + '-12-31').reduce(ee.Reducer.median(), parallelScale=16)
-
 			#export asset
 			self.GEE_2_asset(raster=gee_l8_mean, name=mean_asset_path, timeout=False)
 			gee_l8_mean = ee.Image(self.asset_ID + mean_asset_path)
 			
-		self.l8_mean = self.asset_ID + mean_asset_path
+		self.check_layer(self.asset_ID + mean_asset_path)
 # 		vis_params = {'min': 200, 'max': 4000}
 # 		name = 'Landsat-8'
 # 		self.mapping(gee_l8_mean, vis_params, name)
@@ -839,9 +807,6 @@ class GEE_extent(object):
 						  '_' + str(abs(tmpcoords[0][2][1])) + \
 						  '_' + str(self.sampling) + '_' + str(doi.year)
 		mean_asset_path = mean_asset_path.replace('.', '')
-
-		#ThanhGIS: To avoid the possibility in Colab, commented out the below lines:
-
 		evi_mean = ee.Image(self.asset_ID + mean_asset_path)
 		try:
 			evi_mean.getInfo()
@@ -853,24 +818,20 @@ class GEE_extent(object):
 			# export asset
 			self.GEE_2_asset(raster=evi_mean, name=mean_asset_path, timeout=False)
 			evi_mean = ee.Image(self.asset_ID + mean_asset_path)
-		self.evi_mean = self.asset_ID + mean_asset_path
+		self.check_layer(self.asset_ID + mean_asset_path)
 # 		vis_params = {'min': -650, 'max': 5000}
 # 		name = 'EVI_MODIS_Mean'
 # 		self.mapping(evi_mean, vis_params, name)
 		# fiter
 		# filter
 		def addDate(image2):
-			date_img = ee.Image(image2.date().difference(doi.strftime('%Y-%m-%dT%H:%M:%S'), 'second')).abs().float().rename(
-				['Ddate']).multiply(-1)
+			date_img = ee.Image(image2.date().difference(doi.strftime('%Y-%m-%dT%H:%M:%S'), 'second')).abs().float().rename(['Ddate']).multiply(-1)
 			return image2.addBands(date_img)
 
-		gee_evi_date = evi_collection.filterDate((doi - dt.timedelta(days=30)).strftime('%Y-%m-%d'),
-												 (doi + dt.timedelta(days=30)).strftime('%Y-%m-%d'))
+		gee_evi_date = evi_collection.filterDate((doi - dt.timedelta(days=30)).strftime('%Y-%m-%d'), (doi + dt.timedelta(days=30)).strftime('%Y-%m-%d'))
 		gee_evi_date = gee_evi_date.map(addDate)
 		gee_evi_date = gee_evi_date.qualityMosaic('Ddate').float()
-
 		gee_evi_date.set('system:time_start',  ee.Date(doi.strftime('%Y-%m-%dT%H:%M:%S')).millis())
-
 		try:
 			self.EVI_IMG = gee_evi_date.select('EVI').clip(self.roi)
 			self.EVI_MEAN = evi_mean.select('EVI_median')
@@ -927,16 +888,14 @@ class GEE_extent(object):
 				print(name + 'already exists')
 				return
 		except:
-			file_exp = ee.batch.Export.image.toAsset(image=geds, description='fileexp' + name,
-													 assetId=self.asset_ID+ name,
-													 region=self.roi.getInfo()['coordinates'],
-													 scale=self.sampling,
-													 maxPixels=1000000000000)
-
+			file_exp = ee.batch.Export.image.toAsset(image=geds, 
+								 description='fileexp' + name,
+								 assetId=self.asset_ID+ name,
+								 region=self.roi.getInfo()['coordinates'],
+								 scale=self.sampling,
+								 maxPixels=1000000000000)
 			file_exp.start()
-
 			start = time.time()
-
 			while file_exp.active():
 				time.sleep(2)
 				if timeout and (time.time() - start) > 4800:
@@ -944,11 +903,8 @@ class GEE_extent(object):
 					break
 			else:
 				print('Export completed')
-	def check_layer(self): 
-		layer_s1 = self.s1_mean
-		layer_l8 = self.l8_mean
-		layer_evi = self.evi_mean
-		print (layer_l8)
+	def check_layer(self, string): 
+		print ('Layer ID: ', string)
 	def mapping (self, image, vis_params, name):
 		#Add EE drawing method to folium.
 		def add_ee_layer(self, ee_image_object, vis_params, name):
