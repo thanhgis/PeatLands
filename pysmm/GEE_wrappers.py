@@ -350,25 +350,9 @@ class GEE_extent(object):
 			# export asset
 			self.GEE_2_asset(raster=mean_gvv_v, name=mean_asset_path, timeout=False)
 			mean_gvv_v = ee.Image(self.asset_ID + mean_asset_path)
-
-		#Add EE drawing method to folium.
-		def GEE_2_Colab(self, ee_image_object, vis_params, name):
-			map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
-			folium.raster_layers.TileLayer(
-				tiles = map_id_dict['tile_fetcher'].url_format,
-				attr = 'Map Data &copy; <a href="https://earthengine.google.com/">Google Earth Engine</a>',
-				name = name,
-				overlay = True,
-				control = True).add_to(self)
 		vis_params = {'palette': 'red'}
-		folium.Map.add_ee_layer = GEE_2_Colab
-		my_map = folium.Map(location=[self.centerlon, self.centerlat], zoom_start=10)
-		my_map.add_ee_layer(mean_gvv_v, vis_params, 'S1_OUTPUT')
-		# Add a layer control panel to the map.
-		my_map.add_child(folium.LayerControl())
-
-		# Display the map.
-		display(my_map)
+		name = 'S1_Output'
+		self.mapping(mean_gvv_v, vis_params, name)
 
 		# export
 		# self.S1_SIG0_VV_db = s1_sig0_vv
@@ -796,23 +780,9 @@ class GEE_extent(object):
 			self.GEE_2_asset(raster=gee_l8_mean, name=mean_asset_path, timeout=False)
 			gee_l8_mean = ee.Image(self.asset_ID + mean_asset_path)
 
-		#Add EE drawing method to folium.
-		def GEE_2_Colab(self, ee_image_object, vis_params, name):
-			map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
-			folium.raster_layers.TileLayer(
-				tiles = map_id_dict['tile_fetcher'].url_format,
-				attr = 'Map Data &copy; <a href="https://earthengine.google.com/">Google Earth Engine</a>',
-				name = name,
-				overlay = True,
-				control = True).add_to(self)
-		vis_params = {'min': 200,'max': 4000}
-		folium.Map.add_ee_layer = GEE_2_Colab
-		my_map = folium.Map(location=[self.centerlon, self.centerlat], zoom_start=10)
-		my_map.add_ee_layer(gee_l8_mean, vis_params, 'L8_Mean')
-		# Add a layer control panel to the map.
-		my_map.add_child(folium.LayerControl())
-		# Display the map.
-		display(my_map)
+		vis_params = {'min': 200, 'max': 4000}
+		name = 'Landsat-8'
+		self.mapping(gee_l8_mean, vis_params, name)
 
 		def addDate(image2):
 			date_img = ee.Image(image2.date().difference(doi.strftime('%Y-%m-%dT%H:%M:%S'), 'second')).abs().float().rename(
@@ -858,7 +828,6 @@ class GEE_extent(object):
 			immask = image.select('SummaryQA').eq(ee.Image(0))
 			evimask = image.select('EVI').lte(5000)
 			image = image.updateMask(immask).updateMask(evimask)
-
 			return image.clip(self.roi)
 
 		# load collection
@@ -887,25 +856,9 @@ class GEE_extent(object):
 			# export asset
 			self.GEE_2_asset(raster=evi_mean, name=mean_asset_path, timeout=False)
 			evi_mean = ee.Image(self.asset_ID + mean_asset_path)
-		#Add EE drawing method to folium.
-		def GEE_2_Colab(self, ee_image_object, vis_params, name):
-			map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
-			folium.raster_layers.TileLayer(
-				tiles = map_id_dict['tile_fetcher'].url_format,
-				attr = 'Map Data &copy; <a href="https://earthengine.google.com/">Google Earth Engine</a>',
-				name = name,
-				overlay = True,
-				control = True).add_to(self)
-		vis_params = {'min': -650,'max': 4000}
-		folium.Map.add_ee_layer = GEE_2_Colab
-		my_map = folium.Map(location=[self.centerlon, self.centerlat], zoom_start=10)
-		my_map.add_ee_layer(evi_mean, vis_params, 'EVI_MODIS_Mean')
-		# Add a layer control panel to the map.
-		my_map.add_child(folium.LayerControl())
-		# Display the map.
-		display(my_map)
-
-
+		vis_params = {'min': -650, 'max': 5000}
+		name = 'EVI_MODIS_Mean'
+		self.mapping(evi_mean, vis_params, name)
 		# fiter
 		# filter
 		def addDate(image2):
@@ -993,3 +946,21 @@ class GEE_extent(object):
 					break
 			else:
 				print('Export completed')
+
+	def mapping (self, image, vis_params, name):
+		#Add EE drawing method to folium.
+		def add_ee_layer(self, ee_image_object, vis_params, name):
+			map_id_dict = ee.Image(ee_image_object).getMapId(vis_params)
+			folium.raster_layers.TileLayer(
+				tiles = map_id_dict['tile_fetcher'].url_format,
+				attr = 'Map Data &copy; <a href="https://earthengine.google.com/">Google Earth Engine</a>',
+				name = name,
+				overlay = True,
+				control = True).add_to(self)
+		folium.Map.add_ee_layer = add_ee_layer
+		my_map = folium.Map(location=[self.centerlon, self.centerlat], zoom_start=10)
+		my_map.add_ee_layer(image, vis_params, name)
+		# Add a layer control panel to the map.
+		my_map.add_child(folium.LayerControl())
+		# Display the map.
+		display(my_map)
