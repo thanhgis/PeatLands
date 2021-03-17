@@ -904,9 +904,10 @@ class GEE_extent(object):
 					break
 			else:
 				print('Export completed')
-	def check_layer(self, string): 
-		print ('Layer ID: ', string)
-		return string 
+	def check_layer(self): 
+		l8 = pickle.load('../l8_mean', 'rb')
+		print ('Layer ID: ', l8)
+		return l8 
 	def mapping (self, image, vis_params, name):
 		#Add EE drawing method to folium.
 		def add_ee_layer(self, ee_image_object, vis_params, name):
