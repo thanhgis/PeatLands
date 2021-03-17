@@ -1,4 +1,4 @@
-from pysmm.GEE_wrappers import GEE_extent
+from GEE_wrappers import GEE_extent
 import numpy as np
 import os
 import math
