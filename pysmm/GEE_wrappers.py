@@ -905,7 +905,7 @@ class GEE_extent(object):
 			else:
 				print('Export completed')
 	def check_layer(self): 
-		l8 = pickle.load('../l8_mean', 'rb')
+		l8 = pickle.load(open('../l8_mean', 'rb'))
 		print ('Layer ID: ', l8)
 		return l8 
 	def mapping (self, image, vis_params, name):
