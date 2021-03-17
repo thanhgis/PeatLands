@@ -120,12 +120,9 @@ class GEE_extent(object):
 		bandNames = ee.Image(images.first()).bandNames()
 		bandNamesMean = bandNames.map(lambda b: ee.String(b).cat('_mean'))
 		bandNamesRatio = bandNames.map(lambda b: ee.String(b).cat('_ratio'))
-
 		# compute spatial average for all images
 		meanSpace = images.map(mapMeanSpace)
-
 		# computes a multi-temporal despeckle function for a single image
-
 		def multitemporalDespeckleSingle(image):
 			t = image.date()
 			fro = t.advance(ee.Number(timeWindow['before']), timeWindow['units'])
@@ -350,9 +347,8 @@ class GEE_extent(object):
 			# export asset
 			self.GEE_2_asset(raster=mean_gvv_v, name=mean_asset_path, timeout=False)
 			mean_gvv_v = ee.Image(self.asset_ID + mean_asset_path)
-		vis_params = {'palette': 'red'}
-		name = 'S1_Output'
-		self.mapping(mean_gvv_v, vis_params, name)
+		
+		self.s1_mean = self.asset_ID + mean_asset_path
 
 		# export
 		# self.S1_SIG0_VV_db = s1_sig0_vv
@@ -779,10 +775,11 @@ class GEE_extent(object):
 			#export asset
 			self.GEE_2_asset(raster=gee_l8_mean, name=mean_asset_path, timeout=False)
 			gee_l8_mean = ee.Image(self.asset_ID + mean_asset_path)
-
-		vis_params = {'min': 200, 'max': 4000}
-		name = 'Landsat-8'
-		self.mapping(gee_l8_mean, vis_params, name)
+			
+		self.l8_mean = self.asset_ID + mean_asset_path
+# 		vis_params = {'min': 200, 'max': 4000}
+# 		name = 'Landsat-8'
+# 		self.mapping(gee_l8_mean, vis_params, name)
 
 		def addDate(image2):
 			date_img = ee.Image(image2.date().difference(doi.strftime('%Y-%m-%dT%H:%M:%S'), 'second')).abs().float().rename(
@@ -856,9 +853,10 @@ class GEE_extent(object):
 			# export asset
 			self.GEE_2_asset(raster=evi_mean, name=mean_asset_path, timeout=False)
 			evi_mean = ee.Image(self.asset_ID + mean_asset_path)
-		vis_params = {'min': -650, 'max': 5000}
-		name = 'EVI_MODIS_Mean'
-		self.mapping(evi_mean, vis_params, name)
+		self.evi_mean = self.asset_ID + mean_asset_path
+# 		vis_params = {'min': -650, 'max': 5000}
+# 		name = 'EVI_MODIS_Mean'
+# 		self.mapping(evi_mean, vis_params, name)
 		# fiter
 		# filter
 		def addDate(image2):
@@ -946,7 +944,11 @@ class GEE_extent(object):
 					break
 			else:
 				print('Export completed')
-
+	def check_layer(self): 
+		layer_s1 = self.s1_mean
+		layer_l8 = self.l8_mean
+		layer_evi = self.evi_mean
+		print (layer_l8)
 	def mapping (self, image, vis_params, name):
 		#Add EE drawing method to folium.
 		def add_ee_layer(self, ee_image_object, vis_params, name):
