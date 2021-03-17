@@ -908,7 +908,6 @@ class GEE_extent(object):
 		l8 = pickle.load(open('../l8_mean', 'rb'))
 		s1 = pickle.load(open('../s1_mean', 'rb'))
 		evi = pickle.load(open('../evi_mean', 'rb'))
-		print ('Layer ID: ', l8, s1, evi)
 		return [l8, s1, evi] 
 	def mapping (self, image, vis_params, name):
 		#Add EE drawing method to folium.
